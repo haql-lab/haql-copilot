@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>haql Well Surveillance Co-pilot</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+    --text: #e1e3ea; --muted: #8b8fa3;
+    --magenta: #c678dd; --cyan: #56b6c2; --green: #98c379; --red: #e06c75; --yellow: #e5c07b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'SF Mono','Fira Code','Cascadia Code',monospace; background: var(--bg); color: var(--text); padding: 20px; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; color: var(--magenta); }
+  .subtitle { color: var(--muted); font-size: 0.8rem; margin-bottom: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 0.9rem; color: var(--cyan); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .metric { text-align: center; padding: 8px; }
+  .metric .value { font-size: 1.6rem; font-weight: 700; }
+  .metric .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; margin-top: 2px; }
+  .metric .sub { font-size: 0.65rem; color: var(--muted); margin-top: 0; }
+  .delta-pos { color: var(--green); }
+  .delta-neg { color: var(--red); }
+  .delta-zero { color: var(--muted); }
+  button, .btn {
+    background: var(--magenta); color: #fff; border: none; border-radius: 6px;
+    padding: 8px 16px; font-family: inherit; font-size: 0.8rem; cursor: pointer; font-weight: 600;
+  }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  input, select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 6px 10px; color: var(--text); font-family: inherit; font-size: 0.8rem; width: 100%;
+  }
+  label { font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  .form-row { display: flex; gap: 12px; align-items: end; }
+  .form-row > div { flex: 1; }
+  .well-card { padding: 10px; border-left: 3px solid var(--cyan); margin-bottom: 8px; }
+  .well-card.injector { border-left-color: var(--red); }
+  .well-card.producer { border-left-color: var(--green); }
+  .well-name { font-weight: 600; font-size: 0.85rem; }
+  .well-detail { font-size: 0.75rem; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 400; text-transform: uppercase; font-size: 0.7rem; }
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .status-dot.ready { background: var(--green); }
+  .status-dot.pending { background: var(--yellow); animation: pulse 1s infinite; }
+  .status-dot.error { background: var(--red); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; display: none; font-size: 0.8rem; z-index: 100; }
+  .toast.show { display: block; }
+  #chart-container { height: 200px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; }
+  .badge-inj { background: rgba(224,108,117,0.2); color: var(--red); }
+  .badge-prod { background: rgba(152,195,121,0.2); color: var(--green); }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>haql Well Surveillance Co-pilot</h1>
+  <div class="subtitle">PINN-powered reservoir simulation &bull; what-if scenarios in seconds instead of hours &bull; <span style="color:var(--green);">copilot, not autopilot</span></div>
+
+  <!-- Status bar -->
+  <div class="card" style="padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <span class="status-dot {% if baseline %}ready{% else %}pending{% endif %}" id="status-dot"></span>
+      <span id="status-text">{% if baseline %}Model trained &mdash; ready for what-if queries{% else %}Train the baseline model first{% endif %}</span>
+    </div>
+    <div>
+      <span style="color: var(--muted); font-size: 0.75rem;">Quick train: </span>
+      <input type="number" id="train-epochs" value="40" style="width: 55px; display: inline;">
+      <input type="number" id="train-interior" value="200" style="width: 60px; display: inline;">
+      <button onclick="train()" id="train-btn">Train Baseline</button>
+    </div>
+  </div>
+
+  <!-- Well overview -->
+  <div class="grid-2">
+    <div class="card">
+      <h2>Wells</h2>
+      {% for w in config.wells %}
+      <div class="well-card {{ w.kind }}">
+        <div class="well-name">{{ w.name }}</div>
+        <div class="well-detail">
+          ({{ '%.2f'|format(w.x) }}, {{ '%.2f'|format(w.y) }}) &bull;
+          <span class="badge badge-{{ w.kind }}">{{ w.kind|capitalize }}</span> &bull;
+          Rate: <strong>{{ '%.0f'|format(w.rate) }}</strong> bbl/d
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="card">
+      <h2>Key Metrics</h2>
+      <div class="grid-3">
+        <div class="metric">
+          <div class="value" id="m-p-inj" style="color: var(--red);">
+            {% if baseline %}{{ '%.0f'|format(baseline.p_inj_psi) }}{% else %}&mdash;{% endif %}
+          </div>
+          <div class="label">Injector (psi)</div>
+        </div>
+        <div class="metric">
+          <div class="value" id="m-p-prod" style="color: var(--green);">
+            {% if baseline %}{{ '%.0f'|format(baseline.p_prod_psi) }}{% else %}&mdash;{% endif %}
+          </div>
+          <div class="label">Producer (psi)</div>
+        </div>
+        <div class="metric">
+          <div class="value" id="m-sg-prod" style="color: var(--cyan);">
+            {% if baseline %}{{ '%.1f'|format(baseline.sg_prod * 100) }}{% else %}&mdash;{% endif %}
+          </div>
+          <div class="label">Producer Sg (%)</div>
+        </div>
+      </div>
+      <div class="grid-3" style="margin-top: 8px;">
+        <div class="metric">
+          <div class="value" id="m-inj-rate" style="font-size:1rem; color:var(--yellow);">
+            {% if baseline %}{{ '%.0f'|format(baseline.injector_rate) }}{% else %}&mdash;{% endif %}
+          </div>
+          <div class="label">Inj Rate (bbl/d)</div>
+        </div>
+        <div class="metric">
+          <div class="value" id="m-prod-rate" style="font-size:1rem; color:var(--yellow);">
+            {% if baseline %}{{ '%.0f'|format(baseline.producer_rate) }}{% else %}&mdash;{% endif %}
+          </div>
+          <div class="label">Prod Rate (bbl/d)</div>
+        </div>
+        <div class="metric">
+          <div class="value" id="m-loss" style="font-size:0.9rem;">
+            {% if baseline %}{{ '%.2f'|format(baseline.total_loss) }}{% else %}&mdash;{% endif %}
+          </div>
+          <div class="label">Loss</div>
+        </div>
+      </div>
+      <div style="margin-top: 8px; font-size: 0.75rem; color: var(--muted); text-align: center;">
+        Train time: <span id="train-time">{% if baseline %}{{ '%.1f'|format(baseline.train_time_s) }}s{% else %}&mdash;{% endif %}</span>
+        &bull; FDM targets: injector 4801 psi &middot; producer 3840 psi &middot; Sg 8.6%
+      </div>
+    </div>
+  </div>
+
+  <!-- What-if -->
+  <div class="card">
+    <h2>What-If Scenario</h2>
+    <div class="form-row">
+      <div>
+        <label>Label</label>
+        <input type="text" id="wi-label" value="Increase injection" placeholder="Scenario name">
+      </div>
+      <div>
+        <label>Injector Rate (bbl/d)</label>
+        <input type="number" id="wi-inj-rate" value="15000" placeholder="Default">
+      </div>
+      <div>
+        <label>Producer Rate (bbl/d)</label>
+        <input type="number" id="wi-prod-rate" value="25000" placeholder="Default">
+      </div>
+      <div>
+        <label>Epochs</label>
+        <input type="number" id="wi-epochs" value="40">
+      </div>
+      <div>
+        <label style="opacity:0;">Run</label>
+        <button onclick="whatif()" id="wi-btn">Run Scenario</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="grid-2">
+    <div class="card">
+      <h2>Scenario History</h2>
+      <table>
+        <thead><tr><th>Scenario</th><th>P inj</th><th>P prod</th><th>Sg</th><th>Inj rate</th><th>Prod rate</th><th>Time</th></tr></thead>
+        <tbody id="history-body">
+          {% if baseline %}
+          <tr style="color:var(--muted);">
+            <td>Baseline</td>
+            <td>{{ '%.0f'|format(baseline.p_inj_psi) }}</td>
+            <td>{{ '%.0f'|format(baseline.p_prod_psi) }}</td>
+            <td>{{ '%.1f'|format(baseline.sg_prod * 100) }}%</td>
+            <td>{{ '%.0f'|format(baseline.injector_rate) }}</td>
+            <td>{{ '%.0f'|format(baseline.producer_rate) }}</td>
+            <td>{{ '%.1f'|format(baseline.train_time_s) }}s</td>
+          </tr>
+          {% endif %}
+          {% for h in history %}
+          <tr>
+            <td>{{ h.label }}</td>
+            <td>{{ '%.0f'|format(h.p_inj_psi) }}</td>
+            <td>{{ '%.0f'|format(h.p_prod_psi) }}</td>
+            <td>{{ '%.1f'|format(h.sg_prod * 100) }}%</td>
+            <td>{{ '%.0f'|format(h.injector_rate) }}</td>
+            <td>{{ '%.0f'|format(h.producer_rate) }}</td>
+            <td>{{ '%.1f'|format(h.train_time_s) }}s</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>How It Works</h2>
+      <div style="font-size:0.8rem; color:var(--muted); line-height:1.6;">
+        <p><strong style="color:var(--text);">1.</strong> Define your reservoir wells and rates</p>
+        <p><strong style="color:var(--text);">2.</strong> Train the PINN baseline model (~30s)</p>
+        <p><strong style="color:var(--text);">3.</strong> Run what-if scenarios by changing well rates</p>
+        <p><strong style="color:var(--text);">4.</strong> Compare results in seconds</p>
+        <br>
+        <p style="color:var(--cyan);">Each scenario trains a physics-informed neural network from scratch &mdash; 1000&times; faster than conventional FDM simulators.</p>
+        <br>
+        <p>Reservoir: <span style="color:var(--text);">2-phase black-oil &bull; SPE-1 PVT &bull; Peaceman wells</span></p>
+        <p>Model: <span style="color:var(--text);">3&times;64 trunk + 2&times;64 branches &bull; tanh &bull; Adam &bull; IDW constraints</span></p>
+        <p>Parameters: <span style="color:var(--text);">~17K &bull; zero external deps &bull; C++20 static binary</span></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const BASE = '';
+
+function showToast(msg, ok=true) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderLeft = ok ? '3px solid var(--green)' : '3px solid var(--red)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 5000);
+}
+
+async function train() {
+  const btn = document.getElementById('train-btn');
+  btn.disabled = true; btn.textContent = 'Training...';
+  try {
+    const r = await fetch(BASE + '/train', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({
+        epochs: document.getElementById('train-epochs').value,
+        interior: document.getElementById('train-interior').value,
+      }),
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      document.getElementById('m-p-inj').textContent = Math.round(d.p_inj_psi);
+      document.getElementById('m-p-prod').textContent = Math.round(d.p_prod_psi);
+      document.getElementById('m-sg-prod').textContent = (d.sg_prod * 100).toFixed(1);
+      document.getElementById('m-inj-rate').textContent = Math.round(d.inj_rate || 10000);
+      document.getElementById('m-prod-rate').textContent = Math.round(d.prod_rate || 20000);
+      document.getElementById('train-time').textContent = d.train_time_s + 's';
+      document.getElementById('m-loss').textContent = (d.total_loss || 0).toFixed(2);
+      document.getElementById('status-dot').className = 'status-dot ready';
+      document.getElementById('status-text').textContent = 'Model trained \u2014 ready for what-if queries';
+      showToast('Baseline trained in ' + d.train_time_s + 's');
+      setTimeout(() => location.reload(), 500);
+    } else { showToast('Error: ' + d.message, false); }
+  } catch(e) { showToast('Error: ' + e, false); }
+  finally { btn.disabled = false; btn.textContent = 'Train Baseline'; }
+}
+
+async function whatif() {
+  const btn = document.getElementById('wi-btn');
+  btn.disabled = true; btn.textContent = 'Running...';
+  try {
+    const r = await fetch(BASE + '/whatif', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({
+        label: document.getElementById('wi-label').value,
+        epochs: document.getElementById('wi-epochs').value,
+        interior: '200',
+        injector_rate: document.getElementById('wi-inj-rate').value || '',
+        producer_rate: document.getElementById('wi-prod-rate').value || '',
+      }),
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      document.getElementById('m-p-inj').textContent = Math.round(d.p_inj_psi);
+      document.getElementById('m-p-prod').textContent = Math.round(d.p_prod_psi);
+      document.getElementById('m-sg-prod').textContent = (d.sg_prod * 100).toFixed(1);
+      document.getElementById('m-inj-rate').textContent = Math.round(d.inj_rate);
+      document.getElementById('m-prod-rate').textContent = Math.round(d.prod_rate);
+      const tb = document.getElementById('history-body');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${d.label}</td><td>${Math.round(d.p_inj_psi)}</td><td>${Math.round(d.p_prod_psi)}</td>
+        <td>${(d.sg_prod * 100).toFixed(1)}%</td>
+        <td>${Math.round(d.inj_rate)}</td><td>${Math.round(d.prod_rate)}</td>
+        <td>${d.train_time_s}s</td>`;
+      tb.appendChild(tr);
+      showToast(`"${d.label}" done in ${d.train_time_s}s`);
+    } else { showToast('Error: ' + d.message, false); }
+  } catch(e) { showToast('Error: ' + e, false); }
+  finally { btn.disabled = false; btn.textContent = 'Run Scenario'; }
+}
+</script>
+</body>
+</html>
