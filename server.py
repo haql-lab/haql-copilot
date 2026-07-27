@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 
 from copilot.engine import HaqlEngine
@@ -17,6 +18,11 @@ app = FastAPI(title="haql Well Surveillance Co-pilot")
 
 BASE = Path(__file__).parent
 jinja_env = Environment(loader=FileSystemLoader(str(BASE / "templates")))
+
+# Serve static assets (if any)
+static_dir = BASE / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 config = ReservoirConfig(
     p_init=4800.0, porosity=0.242, permeability=215.0,
@@ -72,13 +78,32 @@ def log_run_to_memory(label: str, result: ScenarioResult):
         print(f"[memory] log failed: {e}")
 
 
+def get_memory_entities():
+    """Return structured list of entities from memory."""
+    if mem is None:
+        return []
+    try:
+        raw = mem.search("copilot", "")
+        entities = []
+        for line in raw.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(" ", 2)
+            if len(parts) >= 2:
+                entities.append({"eid": parts[0], "rest": parts[1] if len(parts) > 1 else ""})
+        return entities
+    except Exception:
+        return []
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
     tmpl = jinja_env.get_template("dashboard.html")
     html = tmpl.render({
         "config": config,
         "baseline": baseline,
-        "history": history[-5:],
+        "history": history[-10:],
     })
     return HTMLResponse(html)
 
@@ -133,6 +158,25 @@ async def whatif(
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 
+@app.post("/predict")
+async def predict(
+    x: float = Form(0.5),
+    y: float = Form(0.5),
+    t: float = Form(100.0),
+    epochs: int = Form(50),
+    interior: int = Form(200),
+):
+    try:
+        result = engine.predict(x=x, y=y, t=t, epochs=epochs, interior=interior)
+        return JSONResponse({
+            "status": "ok",
+            "pressure_psi": result.get("pressure_psi"),
+            "sg_pct": result.get("sg_pct"),
+        })
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+
 @app.get("/status")
 async def status():
     return JSONResponse({
@@ -146,7 +190,7 @@ async def status():
     })
 
 
-# ── Memory query endpoints ──────────────────────────────────────────
+# ── Memory query endpoints ──
 @app.get("/memory/search")
 async def memory_search(q: str = ""):
     if mem is None:
@@ -168,5 +212,27 @@ async def memory_history():
     try:
         output = mem.search("copilot", "run_")
         return JSONResponse({"results": output})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/memory/entities")
+async def memory_entities(pid: str = "copilot"):
+    if mem is None:
+        return JSONResponse({"error": "Memory not available"}, status_code=503)
+    try:
+        entities = []
+        raw = mem.search(pid, "")
+        for line in raw.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            eid = line.split()[0] if line.split() else line
+            try:
+                info = mem.entity_get(pid, eid)
+            except Exception:
+                info = ""
+            entities.append({"eid": eid, "info": info})
+        return JSONResponse({"entities": entities})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

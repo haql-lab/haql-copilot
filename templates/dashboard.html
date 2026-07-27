@@ -9,11 +9,11 @@
   :root {
     --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
     --text: #e1e3ea; --muted: #8b8fa3;
-    --magenta: #c678dd; --cyan: #56b6c2; --green: #98c379; --red: #e06c75; --yellow: #e5c07b;
+    --magenta: #c678dd; --cyan: #56b6c2; --green: #98c379; --red: #e06c75; --yellow: #e5c07b; --blue: #61afef;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'SF Mono','Fira Code','Cascadia Code',monospace; background: var(--bg); color: var(--text); padding: 20px; }
-  .container { max-width: 1200px; margin: 0 auto; }
+  .container { max-width: 1400px; margin: 0 auto; }
   h1 { font-size: 1.4rem; margin-bottom: 4px; color: var(--magenta); }
   .subtitle { color: var(--muted); font-size: 0.8rem; margin-bottom: 20px; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
@@ -56,10 +56,25 @@
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
   .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; display: none; font-size: 0.8rem; z-index: 100; }
   .toast.show { display: block; }
-  #chart-container { height: 200px; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; }
   .badge-inj { background: rgba(224,108,117,0.2); color: var(--red); }
   .badge-prod { background: rgba(152,195,121,0.2); color: var(--green); }
+  #well-map { width: 100%; height: 200px; border-radius: 4px; background: var(--bg); display: block; margin-bottom: 8px; }
+  .chart-container { position: relative; height: 180px; width: 100%; }
+  .entity-row { padding: 4px 8px; font-size: 0.75rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+  .entity-row:hover { background: rgba(86,182,194,0.08); }
+  .entity-kind { color: var(--cyan); }
+  .entity-name { color: var(--text); }
+  .memory-empty { color: var(--muted); font-size: 0.75rem; padding: 8px; text-align: center; }
+  .btn-small { padding: 4px 10px; font-size: 0.7rem; background: var(--blue); }
+  .link { color: var(--cyan); cursor: pointer; text-decoration: underline; font-size: 0.75rem; }
+  .link:hover { color: var(--magenta); }
+  .progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 8px; overflow: hidden; display: none; }
+  .progress-bar .fill { height: 100%; width: 0; background: var(--magenta); border-radius: 2px; animation: progress 2s ease-in-out infinite; }
+  @keyframes progress { 0% { width: 0; } 50% { width: 70%; } 100% { width: 100%; } }
+  .fade-in { animation: fadeIn 0.3s ease-in; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  @media (max-width: 800px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -81,10 +96,12 @@
     </div>
   </div>
 
-  <!-- Well overview -->
-  <div class="grid-2">
+  <!-- Key Metrics row -->
+  <div class="grid-3">
+    <!-- Wells card with map -->
     <div class="card">
       <h2>Wells</h2>
+      <canvas id="well-map" height="200"></canvas>
       {% for w in config.wells %}
       <div class="well-card {{ w.kind }}">
         <div class="well-name">{{ w.name }}</div>
@@ -96,83 +113,63 @@
       </div>
       {% endfor %}
     </div>
+    <!-- Key Metrics -->
     <div class="card">
       <h2>Key Metrics</h2>
       <div class="grid-3">
-        <div class="metric">
-          <div class="value" id="m-p-inj" style="color: var(--red);">
-            {% if baseline %}{{ '%.0f'|format(baseline.p_inj_psi) }}{% else %}&mdash;{% endif %}
-          </div>
-          <div class="label">Injector (psi)</div>
-        </div>
-        <div class="metric">
-          <div class="value" id="m-p-prod" style="color: var(--green);">
-            {% if baseline %}{{ '%.0f'|format(baseline.p_prod_psi) }}{% else %}&mdash;{% endif %}
-          </div>
-          <div class="label">Producer (psi)</div>
-        </div>
-        <div class="metric">
-          <div class="value" id="m-sg-prod" style="color: var(--cyan);">
-            {% if baseline %}{{ '%.1f'|format(baseline.sg_prod * 100) }}{% else %}&mdash;{% endif %}
-          </div>
-          <div class="label">Producer Sg (%)</div>
-        </div>
+        <div class="metric"><div class="value" id="m-p-inj" style="color: var(--red);">{% if baseline %}{{ '%.0f'|format(baseline.p_inj_psi) }}{% else %}&mdash;{% endif %}</div><div class="label">Injector (psi)</div></div>
+        <div class="metric"><div class="value" id="m-p-prod" style="color: var(--green);">{% if baseline %}{{ '%.0f'|format(baseline.p_prod_psi) }}{% else %}&mdash;{% endif %}</div><div class="label">Producer (psi)</div></div>
+        <div class="metric"><div class="value" id="m-sg-prod" style="color: var(--cyan);">{% if baseline %}{{ '%.1f'|format(baseline.sg_prod * 100) }}{% else %}&mdash;{% endif %}</div><div class="label">Producer Sg (%)</div></div>
       </div>
       <div class="grid-3" style="margin-top: 8px;">
-        <div class="metric">
-          <div class="value" id="m-inj-rate" style="font-size:1rem; color:var(--yellow);">
-            {% if baseline %}{{ '%.0f'|format(baseline.injector_rate) }}{% else %}&mdash;{% endif %}
-          </div>
-          <div class="label">Inj Rate (bbl/d)</div>
-        </div>
-        <div class="metric">
-          <div class="value" id="m-prod-rate" style="font-size:1rem; color:var(--yellow);">
-            {% if baseline %}{{ '%.0f'|format(baseline.producer_rate) }}{% else %}&mdash;{% endif %}
-          </div>
-          <div class="label">Prod Rate (bbl/d)</div>
-        </div>
-        <div class="metric">
-          <div class="value" id="m-loss" style="font-size:0.9rem;">
-            {% if baseline %}{{ '%.2f'|format(baseline.total_loss) }}{% else %}&mdash;{% endif %}
-          </div>
-          <div class="label">Loss</div>
-        </div>
+        <div class="metric"><div class="value" id="m-inj-rate" style="font-size:1rem; color:var(--yellow);">{% if baseline %}{{ '%.0f'|format(baseline.injector_rate) }}{% else %}&mdash;{% endif %}</div><div class="label">Inj Rate (bbl/d)</div></div>
+        <div class="metric"><div class="value" id="m-prod-rate" style="font-size:1rem; color:var(--yellow);">{% if baseline %}{{ '%.0f'|format(baseline.producer_rate) }}{% else %}&mdash;{% endif %}</div><div class="label">Prod Rate (bbl/d)</div></div>
+        <div class="metric"><div class="value" id="m-loss" style="font-size:0.9rem;">{% if baseline %}{{ '%.2f'|format(baseline.total_loss) }}{% else %}&mdash;{% endif %}</div><div class="label">Loss</div></div>
       </div>
       <div style="margin-top: 8px; font-size: 0.75rem; color: var(--muted); text-align: center;">
         Train time: <span id="train-time">{% if baseline %}{{ '%.1f'|format(baseline.train_time_s) }}s{% else %}&mdash;{% endif %}</span>
         &bull; FDM targets: injector 4801 psi &middot; producer 3840 psi &middot; Sg 8.6%
       </div>
     </div>
-  </div>
-
-  <!-- What-if -->
-  <div class="card">
-    <h2>What-If Scenario</h2>
-    <div class="form-row">
-      <div>
-        <label>Label</label>
-        <input type="text" id="wi-label" value="Increase injection" placeholder="Scenario name">
-      </div>
-      <div>
-        <label>Injector Rate (bbl/d)</label>
-        <input type="number" id="wi-inj-rate" value="15000" placeholder="Default">
-      </div>
-      <div>
-        <label>Producer Rate (bbl/d)</label>
-        <input type="number" id="wi-prod-rate" value="25000" placeholder="Default">
-      </div>
-      <div>
-        <label>Epochs</label>
-        <input type="number" id="wi-epochs" value="40">
-      </div>
-      <div>
-        <label style="opacity:0;">Run</label>
-        <button onclick="whatif()" id="wi-btn">Run Scenario</button>
+    <!-- Pressure comparison chart -->
+    <div class="card">
+      <h2>Pressure Comparison</h2>
+      <div class="chart-container"><canvas id="pressure-chart"></canvas></div>
+      <div style="margin-top:6px; text-align:center; font-size:0.7rem; color:var(--muted);">
+        <span class="badge badge-inj">Injector</span>
+        <span class="badge badge-prod">Producer</span>
+        <span style="margin-left:8px;">FDM: 4801 / 3840 psi</span>
       </div>
     </div>
   </div>
 
-  <!-- Results -->
+  <!-- What-If + Predict row -->
+  <div class="grid-2">
+    <div class="card">
+      <h2>What-If Scenario</h2>
+      <div class="form-row">
+        <div><label>Label</label><input type="text" id="wi-label" value="Increase injection" placeholder="Scenario name"></div>
+        <div><label>Injector Rate (bbl/d)</label><input type="number" id="wi-inj-rate" value="15000" placeholder="Default"></div>
+        <div><label>Producer Rate (bbl/d)</label><input type="number" id="wi-prod-rate" value="25000" placeholder="Default"></div>
+        <div><label>Epochs</label><input type="number" id="wi-epochs" value="40"></div>
+        <div><label style="opacity:0;">Run</label><button onclick="whatif()" id="wi-btn">Run Scenario</button></div>
+      </div>
+      <div class="progress-bar" id="wi-progress"><div class="fill"></div></div>
+    </div>
+    <div class="card">
+      <h2>Predict at Point</h2>
+      <div class="form-row">
+        <div><label>X (frac)</label><input type="number" id="pred-x" value="0.5" step="0.05" min="0" max="1"></div>
+        <div><label>Y (frac)</label><input type="number" id="pred-y" value="0.5" step="0.05" min="0" max="1"></div>
+        <div><label>Time (days)</label><input type="number" id="pred-t" value="100" step="10"></div>
+        <div><label>Epochs</label><input type="number" id="pred-epochs" value="30"></div>
+        <div><label style="opacity:0;">Query</label><button onclick="predictPoint()" id="pred-btn">Query</button></div>
+      </div>
+      <div id="pred-result" style="margin-top:8px; font-size:0.8rem; color:var(--muted); text-align:center;"></div>
+    </div>
+  </div>
+
+  <!-- Bottom row: History + Memory -->
   <div class="grid-2">
     <div class="card">
       <h2>Scenario History</h2>
@@ -181,43 +178,24 @@
         <tbody id="history-body">
           {% if baseline %}
           <tr style="color:var(--muted);">
-            <td>Baseline</td>
-            <td>{{ '%.0f'|format(baseline.p_inj_psi) }}</td>
-            <td>{{ '%.0f'|format(baseline.p_prod_psi) }}</td>
-            <td>{{ '%.1f'|format(baseline.sg_prod * 100) }}%</td>
-            <td>{{ '%.0f'|format(baseline.injector_rate) }}</td>
-            <td>{{ '%.0f'|format(baseline.producer_rate) }}</td>
-            <td>{{ '%.1f'|format(baseline.train_time_s) }}s</td>
+            <td>Baseline</td><td>{{ '%.0f'|format(baseline.p_inj_psi) }}</td><td>{{ '%.0f'|format(baseline.p_prod_psi) }}</td>
+            <td>{{ '%.1f'|format(baseline.sg_prod * 100) }}%</td><td>{{ '%.0f'|format(baseline.injector_rate) }}</td>
+            <td>{{ '%.0f'|format(baseline.producer_rate) }}</td><td>{{ '%.1f'|format(baseline.train_time_s) }}s</td>
           </tr>
           {% endif %}
           {% for h in history %}
-          <tr>
-            <td>{{ h.label }}</td>
-            <td>{{ '%.0f'|format(h.p_inj_psi) }}</td>
-            <td>{{ '%.0f'|format(h.p_prod_psi) }}</td>
-            <td>{{ '%.1f'|format(h.sg_prod * 100) }}%</td>
-            <td>{{ '%.0f'|format(h.injector_rate) }}</td>
-            <td>{{ '%.0f'|format(h.producer_rate) }}</td>
-            <td>{{ '%.1f'|format(h.train_time_s) }}s</td>
+          <tr><td>{{ h.label }}</td><td>{{ '%.0f'|format(h.p_inj_psi) }}</td><td>{{ '%.0f'|format(h.p_prod_psi) }}</td>
+            <td>{{ '%.1f'|format(h.sg_prod * 100) }}%</td><td>{{ '%.0f'|format(h.injector_rate) }}</td>
+            <td>{{ '%.0f'|format(h.producer_rate) }}</td><td>{{ '%.1f'|format(h.train_time_s) }}s</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
     <div class="card">
-      <h2>How It Works</h2>
-      <div style="font-size:0.8rem; color:var(--muted); line-height:1.6;">
-        <p><strong style="color:var(--text);">1.</strong> Define your reservoir wells and rates</p>
-        <p><strong style="color:var(--text);">2.</strong> Train the PINN baseline model (~30s)</p>
-        <p><strong style="color:var(--text);">3.</strong> Run what-if scenarios by changing well rates</p>
-        <p><strong style="color:var(--text);">4.</strong> Compare results in seconds</p>
-        <br>
-        <p style="color:var(--cyan);">Each scenario trains a physics-informed neural network from scratch &mdash; 1000&times; faster than conventional FDM simulators.</p>
-        <br>
-        <p>Reservoir: <span style="color:var(--text);">2-phase black-oil &bull; SPE-1 PVT &bull; Peaceman wells</span></p>
-        <p>Model: <span style="color:var(--text);">3&times;64 trunk + 2&times;64 branches &bull; tanh &bull; Adam &bull; IDW constraints</span></p>
-        <p>Parameters: <span style="color:var(--text);">~17K &bull; zero external deps &bull; C++20 static binary</span></p>
-      </div>
+      <h2>Memory Store <span style="font-weight:400;color:var(--muted);font-size:0.7rem;">haql-memory graph</span></h2>
+      <div id="entity-list"><div class="memory-empty">No memory entities loaded</div></div>
+      <div style="margin-top:8px;"><button class="btn-small" onclick="loadMemory()">Reload</button></div>
     </div>
   </div>
 </div>
@@ -235,6 +213,75 @@ function showToast(msg, ok=true) {
   setTimeout(() => t.classList.remove('show'), 5000);
 }
 
+// ── Well map ──
+function drawWellMap(wells) {
+  const c = document.getElementById('well-map');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  const w = c.width = c.clientWidth;
+  const h = c.height;
+  const pad = 30;
+  const x0 = pad, y0 = pad, x1 = w - pad, y1 = h - pad;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Grid
+  ctx.strokeStyle = '#2a2d3a';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 10; i++) {
+    const fx = x0 + (x1 - x0) * i / 10, fy = y0 + (y1 - y0) * i / 10;
+    ctx.beginPath(); ctx.moveTo(fx, y0); ctx.lineTo(fx, y1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x0, fy); ctx.lineTo(x1, fy); ctx.stroke();
+  }
+
+  // Well markers
+  wells.forEach(w => {
+    const px = x0 + (x1 - x0) * w.x;
+    const py = y0 + (y1 - y0) * (1 - w.y);
+    const r = 10;
+    const isInj = w.kind === 'injector';
+
+    // Glow
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, r * 2.5);
+    grad.addColorStop(0, isInj ? 'rgba(224,108,117,0.3)' : 'rgba(152,195,121,0.3)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(px, py, r * 2.5, 0, Math.PI * 2); ctx.fill();
+
+    // Marker
+    ctx.fillStyle = isInj ? '#e06c75' : '#98c379';
+    ctx.strokeStyle = '#0f1117';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (isInj) {
+      // Triangle for injector
+      ctx.moveTo(px, py - r);
+      ctx.lineTo(px - r * 0.866, py + r * 0.5);
+      ctx.lineTo(px + r * 0.866, py + r * 0.5);
+    } else {
+      // Circle for producer
+      ctx.arc(px, py, r * 0.7, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#e1e3ea';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(w.name, px, py + r + 14);
+  });
+
+  // Axis labels
+  ctx.fillStyle = '#8b8fa3';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('x', w / 2, h - 2);
+  ctx.textAlign = 'right';
+  ctx.fillText('y', x0 - 4, (y0 + y1) / 2 + 3);
+}
+
+// ── Training ──
 async function train() {
   const btn = document.getElementById('train-btn');
   btn.disabled = true; btn.textContent = 'Training...';
@@ -259,15 +306,19 @@ async function train() {
       document.getElementById('status-dot').className = 'status-dot ready';
       document.getElementById('status-text').textContent = 'Model trained \u2014 ready for what-if queries';
       showToast('Baseline trained in ' + d.train_time_s + 's');
+      updateChart(d);
       setTimeout(() => location.reload(), 500);
     } else { showToast('Error: ' + d.message, false); }
   } catch(e) { showToast('Error: ' + e, false); }
   finally { btn.disabled = false; btn.textContent = 'Train Baseline'; }
 }
 
+// ── What-if ──
 async function whatif() {
   const btn = document.getElementById('wi-btn');
+  const pb = document.getElementById('wi-progress');
   btn.disabled = true; btn.textContent = 'Running...';
+  pb.style.display = 'block';
   try {
     const r = await fetch(BASE + '/whatif', {
       method: 'POST',
@@ -289,16 +340,117 @@ async function whatif() {
       document.getElementById('m-prod-rate').textContent = Math.round(d.prod_rate);
       const tb = document.getElementById('history-body');
       const tr = document.createElement('tr');
+      tr.className = 'fade-in';
       tr.innerHTML = `<td>${d.label}</td><td>${Math.round(d.p_inj_psi)}</td><td>${Math.round(d.p_prod_psi)}</td>
-        <td>${(d.sg_prod * 100).toFixed(1)}%</td>
-        <td>${Math.round(d.inj_rate)}</td><td>${Math.round(d.prod_rate)}</td>
+        <td>${(d.sg_prod * 100).toFixed(1)}%</td><td>${Math.round(d.inj_rate)}</td><td>${Math.round(d.prod_rate)}</td>
         <td>${d.train_time_s}s</td>`;
       tb.appendChild(tr);
+      updateChart(d);
       showToast(`"${d.label}" done in ${d.train_time_s}s`);
     } else { showToast('Error: ' + d.message, false); }
   } catch(e) { showToast('Error: ' + e, false); }
-  finally { btn.disabled = false; btn.textContent = 'Run Scenario'; }
+  finally { btn.disabled = false; btn.textContent = 'Run Scenario'; pb.style.display = 'none'; }
 }
+
+// ── Predict at point ──
+async function predictPoint() {
+  const btn = document.getElementById('pred-btn');
+  const res = document.getElementById('pred-result');
+  btn.disabled = true; btn.textContent = 'Querying...';
+  try {
+    const r = await fetch(BASE + '/predict', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({
+        x: document.getElementById('pred-x').value,
+        y: document.getElementById('pred-y').value,
+        t: document.getElementById('pred-t').value,
+        epochs: document.getElementById('pred-epochs').value,
+        interior: '200',
+      }),
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      res.innerHTML = `<span style="color:var(--red);">P</span> = <strong>${d.pressure_psi}</strong> psi &nbsp;|&nbsp; <span style="color:var(--cyan);">Sg</span> = <strong>${d.sg_pct}</strong> %`;
+    } else { res.textContent = 'Error: ' + (d.message || 'unknown'); }
+  } catch(e) { res.textContent = 'Error: ' + e; }
+  finally { btn.disabled = false; btn.textContent = 'Query'; }
+}
+
+// ── Pressure chart (Chart.js) ──
+let pressureChart = null;
+function updateChart(data) {
+  const ctx = document.getElementById('pressure-chart');
+  if (!ctx) return;
+  const inj = data.p_inj_psi || 0;
+  const prod = data.p_prod_psi || 0;
+  const label = data.label || 'Current';
+
+  if (!pressureChart) {
+    pressureChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: [label],
+        datasets: [
+          { label: 'Injector', data: [inj], backgroundColor: 'rgba(224,108,117,0.7)', borderColor: '#e06c75', borderWidth: 1 },
+          { label: 'Producer', data: [prod], backgroundColor: 'rgba(152,195,121,0.7)', borderColor: '#98c379', borderWidth: 1 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: false, grid: { color: '#2a2d3a' }, ticks: { color: '#8b8fa3', font: { size: 9 } } },
+          x: { grid: { display: false }, ticks: { color: '#8b8fa3', font: { size: 9 } } },
+        },
+      },
+    });
+  } else {
+    const ds = pressureChart.data.datasets;
+    ds[0].data.push(inj);
+    ds[1].data.push(prod);
+    pressureChart.data.labels.push(label);
+    pressureChart.update();
+  }
+}
+
+// ── Init with baseline data ──
+{% if baseline %}
+const baselineData = {
+  label: 'Baseline',
+  p_inj_psi: {{ baseline.p_inj_psi }},
+  p_prod_psi: {{ baseline.p_prod_psi }},
+};
+// Defer chart init
+setTimeout(() => updateChart(baselineData), 100);
+{% endif %}
+
+// ── Memory browser ──
+async function loadMemory() {
+  const el = document.getElementById('entity-list');
+  el.innerHTML = '<div class="memory-empty">Loading...</div>';
+  try {
+    const r = await fetch(BASE + '/memory/entities');
+    const d = await r.json();
+    if (d.entities && d.entities.length > 0) {
+      el.innerHTML = d.entities.map(e =>
+        `<div class="entity-row"><span><span class="entity-kind">${e.eid}</span></span></div>`
+      ).join('');
+    } else {
+      el.innerHTML = '<div class="memory-empty">No entities stored yet. Train a model to populate memory.</div>';
+    }
+  } catch(e) {
+    el.innerHTML = '<div class="memory-empty">Memory unavailable</div>';
+  }
+}
+loadMemory();
+
+// ── Well map with initial data ──
+setTimeout(() => drawWellMap([
+  {% for w in config.wells %}
+  {name: '{{ w.name }}', x: {{ w.x }}, y: {{ w.y }}, kind: '{{ w.kind }}'} {% if not loop.last %},{% endif %}
+  {% endfor %}
+]), 50);
 </script>
 </body>
 </html>
