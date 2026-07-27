@@ -1,4 +1,4 @@
-"""Well Surveillance Co-pilot — FastAPI server."""
+"""Well Surveillance Co-pilot — FastAPI server with memory backend."""
 
 from pathlib import Path
 import os
@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader
 from copilot.engine import HaqlEngine
 from copilot.reservoir import ReservoirConfig, WellSpec
 from copilot.scenario import ScenarioRunner, ScenarioResult
+from copilot.memory import MemoryClient
 
 app = FastAPI(title="haql Well Surveillance Co-pilot")
 
@@ -31,10 +32,48 @@ runner = ScenarioRunner(engine, config)
 baseline: Optional[ScenarioResult] = None
 history: list = []
 
+# ── Memory backend (haql-memory C++ graph store) ──
+try:
+    mem = MemoryClient()
+    mem.project_create("copilot", name="Well Surveillance", domain="oil-and-gas")
+    for w in config.wells:
+        mem.entity_add("copilot", w.name, kind="well", name=w.name)
+        mem.entity_set("copilot", w.name, props={
+            "x": str(w.x), "y": str(w.y), "kind": w.kind, "rate": str(w.rate),
+        })
+    mem.save()
+    print("[memory] initialized")
+except Exception as e:
+    print(f"[memory] init skipped: {e}")
+    mem = None
+
+
+def log_run_to_memory(label: str, result: ScenarioResult):
+    if mem is None:
+        return
+    try:
+        safe = label.replace(" ", "_").replace("/", "_")
+        mem.entity_add("copilot", f"run_{safe}", kind="scenario", name=label)
+        mem.entity_set("copilot", f"run_{safe}", props={
+            "p_inj_psi": str(round(result.p_inj_psi, 1)),
+            "p_prod_psi": str(round(result.p_prod_psi, 1)),
+            "sg_prod": str(round(result.sg_prod, 3)),
+            "total_loss": str(round(result.total_loss, 4)),
+            "train_time_s": str(round(result.train_time_s, 1)),
+            "injector_rate": str(result.injector_rate),
+            "producer_rate": str(result.producer_rate),
+        })
+        for w in config.wells:
+            mem.relate("copilot", f"run_{safe}", w.name, kind="uses_well")
+        mem.log("copilot", f"run_{safe}", action="simulation",
+                props={"label": label})
+        mem.save()
+    except Exception as e:
+        print(f"[memory] log failed: {e}")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
-    """Main dashboard page."""
     tmpl = jinja_env.get_template("dashboard.html")
     html = tmpl.render({
         "config": config,
@@ -46,10 +85,10 @@ async def dashboard():
 
 @app.post("/train")
 async def train(epochs: int = Form(200), interior: int = Form(500)):
-    """Train the baseline model."""
     global baseline
     try:
         baseline = runner.run_baseline(epochs=epochs, interior=interior)
+        log_run_to_memory("Baseline", baseline)
         return JSONResponse({
             "status": "ok",
             "p_inj_psi": baseline.p_inj_psi,
@@ -72,13 +111,13 @@ async def whatif(
     injector_rate: Optional[float] = Form(None),
     producer_rate: Optional[float] = Form(None),
 ):
-    """Run a what-if scenario with modified well parameters."""
     try:
         sr = runner.run_whatif(
             label=label, epochs=epochs, interior=interior,
             injector_rate=injector_rate, producer_rate=producer_rate,
         )
         history.append(sr)
+        log_run_to_memory(label, sr)
 
         return JSONResponse({
             "status": "ok",
@@ -96,7 +135,6 @@ async def whatif(
 
 @app.get("/status")
 async def status():
-    """Return current model status."""
     return JSONResponse({
         "baseline_ready": baseline is not None,
         "p_inj_psi": baseline.p_inj_psi if baseline else None,
@@ -104,4 +142,31 @@ async def status():
         "wells": [{"name": w.name, "x": w.x, "y": w.y, "kind": w.kind, "rate": w.rate}
                   for w in config.wells],
         "history_count": len(history),
+        "memory_ready": mem is not None,
     })
+
+
+# ── Memory query endpoints ──────────────────────────────────────────
+@app.get("/memory/search")
+async def memory_search(q: str = ""):
+    if mem is None:
+        return JSONResponse({"error": "Memory not available"}, status_code=503)
+    try:
+        if q:
+            output = mem.search("copilot", q)
+        else:
+            output = ""
+        return JSONResponse({"results": output})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/memory/history")
+async def memory_history():
+    if mem is None:
+        return JSONResponse({"error": "Memory not available"}, status_code=503)
+    try:
+        output = mem.search("copilot", "run_")
+        return JSONResponse({"results": output})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
