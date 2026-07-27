@@ -3,198 +3,269 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>haql Well Surveillance Co-pilot</title>
+<title>haql &mdash; Well Surveillance</title>
 <style>
   :root {
-    --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
-    --text: #e1e3ea; --muted: #8b8fa3;
-    --magenta: #c678dd; --cyan: #56b6c2; --green: #98c379; --red: #e06c75; --yellow: #e5c07b; --blue: #61afef;
+    --bg: #0a0e17;
+    --surface: #111827;
+    --card: #1a2236;
+    --border: #1e293b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #3b82f6;
+    --accent-dim: rgba(59,130,246,0.15);
+    --inj: #ef4444;
+    --prod: #22c55e;
+    --gold: #f59e0b;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, sans-serif;
+    --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'SF Mono','Fira Code','Cascadia Code',monospace; background: var(--bg); color: var(--text); padding: 20px; }
-  .container { max-width: 1400px; margin: 0 auto; }
-  h1 { font-size: 1.4rem; margin-bottom: 4px; color: var(--magenta); }
-  .subtitle { color: var(--muted); font-size: 0.8rem; margin-bottom: 20px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  .card h2 { font-size: 0.9rem; color: var(--cyan); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
-  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-  .metric { text-align: center; padding: 8px; }
-  .metric .value { font-size: 1.6rem; font-weight: 700; }
-  .metric .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; margin-top: 2px; }
-  .metric .sub { font-size: 0.65rem; color: var(--muted); margin-top: 0; }
-  .delta-pos { color: var(--green); }
-  .delta-neg { color: var(--red); }
-  .delta-zero { color: var(--muted); }
-  button, .btn {
-    background: var(--magenta); color: #fff; border: none; border-radius: 6px;
-    padding: 8px 16px; font-family: inherit; font-size: 0.8rem; cursor: pointer; font-weight: 600;
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ── Top bar ── */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; height: 52px; border-bottom: 1px solid var(--border);
+    background: var(--surface); flex-shrink: 0;
   }
-  button:hover { opacity: 0.85; }
-  button:disabled { opacity: 0.4; cursor: not-allowed; }
-  input, select {
-    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-    padding: 6px 10px; color: var(--text); font-family: inherit; font-size: 0.8rem; width: 100%;
+  .topbar-left { display: flex; align-items: center; gap: 16px; }
+  .logo { font-weight: 700; font-size: 1.05rem; color: var(--accent); letter-spacing: -0.02em; }
+  .logo-sub { font-size: 0.75rem; color: var(--muted); font-weight: 400; }
+  .topbar-center {
+    display: flex; align-items: center; gap: 16px;
   }
-  label { font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 4px; }
-  .form-row { display: flex; gap: 12px; align-items: end; }
-  .form-row > div { flex: 1; }
-  .well-card { padding: 10px; border-left: 3px solid var(--cyan); margin-bottom: 8px; }
-  .well-card.injector { border-left-color: var(--red); }
-  .well-card.producer { border-left-color: var(--green); }
-  .well-name { font-weight: 600; font-size: 0.85rem; }
-  .well-detail { font-size: 0.75rem; color: var(--muted); }
-  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 400; text-transform: uppercase; font-size: 0.7rem; }
-  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-  .status-dot.ready { background: var(--green); }
-  .status-dot.pending { background: var(--yellow); animation: pulse 1s infinite; }
-  .status-dot.error { background: var(--red); }
+  .status-indicator { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .status-dot.ready { background: var(--prod); }
+  .status-dot.pending { background: var(--gold); animation: pulse 1.2s ease-in-out infinite; }
+  .status-dot.error { background: var(--inj); }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; display: none; font-size: 0.8rem; z-index: 100; }
-  .toast.show { display: block; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; }
-  .badge-inj { background: rgba(224,108,117,0.2); color: var(--red); }
-  .badge-prod { background: rgba(152,195,121,0.2); color: var(--green); }
-  #well-map { width: 100%; height: 200px; border-radius: 4px; background: var(--bg); display: block; margin-bottom: 8px; }
-  .chart-container { position: relative; height: 180px; width: 100%; }
-  .entity-row { padding: 4px 8px; font-size: 0.75rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
-  .entity-row:hover { background: rgba(86,182,194,0.08); }
-  .entity-kind { color: var(--cyan); }
-  .entity-name { color: var(--text); }
-  .memory-empty { color: var(--muted); font-size: 0.75rem; padding: 8px; text-align: center; }
-  .btn-small { padding: 4px 10px; font-size: 0.7rem; background: var(--blue); }
-  .link { color: var(--cyan); cursor: pointer; text-decoration: underline; font-size: 0.75rem; }
-  .link:hover { color: var(--magenta); }
-  .progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 8px; overflow: hidden; display: none; }
-  .progress-bar .fill { height: 100%; width: 0; background: var(--magenta); border-radius: 2px; animation: progress 2s ease-in-out infinite; }
+  .topbar-right { display: flex; align-items: center; gap: 8px; }
+  .topbar-right input { width: 56px; }
+  .topbar-right .label-sm { font-size: 0.7rem; color: var(--muted); margin-right: -4px; }
+
+  /* ── Main layout ── */
+  .main { flex: 1; overflow-y: auto; padding: 20px 24px; }
+  .row { display: grid; gap: 16px; margin-bottom: 16px; }
+  .row-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .row-2 { grid-template-columns: 1fr 1fr; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px; transition: border-color 0.2s;
+  }
+  .card:hover { border-color: rgba(59,130,246,0.2); }
+  .card-title {
+    font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); margin-bottom: 14px;
+  }
+
+  /* ── Metrics ── */
+  .metric-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .metric { text-align: center; padding: 6px 4px; }
+  .metric .value { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; }
+  .metric .value.inj { color: var(--inj); }
+  .metric .value.prod { color: var(--prod); }
+  .metric .value.gold { color: var(--gold); }
+  .metric .label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; margin-top: 1px; letter-spacing: 0.04em; }
+  .metric-footnote { text-align: center; font-size: 0.7rem; color: var(--muted); margin-top: 10px; }
+
+  /* ── Forms ── */
+  .form-row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+  .form-row > div { flex: 1; min-width: 90px; }
+  label { display: block; font-size: 0.65rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
+  input {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 10px; color: var(--text); font-family: var(--font); font-size: 0.8rem;
+    width: 100%; outline: none; transition: border-color 0.15s;
+  }
+  input:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--muted); opacity: 0.5; }
+  button {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 7px 16px; font-family: var(--font); font-size: 0.78rem; cursor: pointer;
+    font-weight: 500; transition: opacity 0.15s; white-space: nowrap;
+  }
+  button:hover { opacity: 0.88; }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button.secondary { background: var(--border); color: var(--text); }
+  button.secondary:hover { background: #334155; }
+  .progress-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 10px; overflow: hidden; display: none; }
+  .progress-bar .fill { height: 100%; width: 0; background: var(--accent); border-radius: 2px; animation: progress 2s ease-in-out infinite; }
   @keyframes progress { 0% { width: 0; } 50% { width: 70%; } 100% { width: 100%; } }
-  .fade-in { animation: fadeIn 0.3s ease-in; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-  @media (max-width: 800px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+  #pred-result { margin-top: 10px; font-size: 0.85rem; color: var(--text); text-align: center; min-height: 1.4em; }
+
+  /* ── Well map ── */
+  #well-map { width: 100%; height: 180px; border-radius: 6px; background: var(--surface); display: block; margin-bottom: 10px; }
+  .well-list { display: flex; gap: 8px; }
+  .well-tag {
+    display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+    border-radius: 6px; font-size: 0.78rem; flex: 1;
+  }
+  .well-tag.inj { background: rgba(239,68,68,0.1); }
+  .well-tag.prod { background: rgba(34,197,94,0.1); }
+  .well-tag .name { font-weight: 600; }
+  .well-tag .meta { color: var(--muted); font-size: 0.7rem; margin-left: auto; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  td:last-child, th:last-child { text-align: right; }
+  .fade-in { animation: fadeIn 0.25s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+  .baseline-row { color: var(--muted); }
+
+  /* ── Memory ── */
+  #entity-list { max-height: 200px; overflow-y: auto; }
+  .entity-row {
+    display: flex; justify-content: space-between; padding: 5px 8px;
+    font-size: 0.75rem; border-bottom: 1px solid var(--border); border-radius: 4px;
+  }
+  .entity-row:hover { background: var(--accent-dim); }
+  .entity-eid { color: var(--accent); font-family: var(--mono); font-size: 0.7rem; }
+  .entity-kind { color: var(--muted); font-size: 0.65rem; }
+  .memory-empty { color: var(--muted); font-size: 0.75rem; padding: 12px 8px; text-align: center; }
+
+  /* ── Chart ── */
+  .chart-wrap { position: relative; height: 170px; width: 100%; }
+  .chart-legend { display: flex; gap: 12px; justify-content: center; margin-top: 6px; }
+  .chart-legend span { font-size: 0.7rem; color: var(--muted); }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 20px; right: 20px; z-index: 100;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 18px; display: none; font-size: 0.8rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .toast.show { display: block; }
+
+  @media (max-width: 900px) { .row-3, .row-2 { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
-<div class="container">
-  <h1>haql Well Surveillance Co-pilot</h1>
-  <div class="subtitle">PINN-powered reservoir simulation &bull; what-if scenarios in seconds instead of hours &bull; <span style="color:var(--green);">copilot, not autopilot</span></div>
-
-  <!-- Status bar -->
-  <div class="card" style="padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;">
-    <div>
-      <span class="status-dot {% if baseline %}ready{% else %}pending{% endif %}" id="status-dot"></span>
-      <span id="status-text">{% if baseline %}Model trained &mdash; ready for what-if queries{% else %}Train the baseline model first{% endif %}</span>
+<div class="app">
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="logo">haql</span>
+      <span class="logo-sub">Well Surveillance</span>
     </div>
-    <div>
-      <span style="color: var(--muted); font-size: 0.75rem;">Quick train: </span>
-      <input type="number" id="train-epochs" value="40" style="width: 55px; display: inline;">
-      <input type="number" id="train-interior" value="200" style="width: 60px; display: inline;">
-      <button onclick="train()" id="train-btn">Train Baseline</button>
+    <div class="topbar-center">
+      <div class="status-indicator">
+        <span class="status-dot {% if baseline %}ready{% else %}pending{% endif %}" id="status-dot"></span>
+        <span id="status-text">{% if baseline %}Ready{% else %}No baseline &mdash; train model{% endif %}</span>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="label-sm">Epochs</span>
+      <input type="number" id="train-epochs" value="40">
+      <span class="label-sm">Points</span>
+      <input type="number" id="train-interior" value="200">
+      <button onclick="train()" id="train-btn">Train</button>
     </div>
   </div>
 
-  <!-- Key Metrics row -->
-  <div class="grid-3">
-    <!-- Wells card with map -->
-    <div class="card">
-      <h2>Wells</h2>
-      <canvas id="well-map" height="200"></canvas>
-      {% for w in config.wells %}
-      <div class="well-card {{ w.kind }}">
-        <div class="well-name">{{ w.name }}</div>
-        <div class="well-detail">
-          ({{ '%.2f'|format(w.x) }}, {{ '%.2f'|format(w.y) }}) &bull;
-          <span class="badge badge-{{ w.kind }}">{{ w.kind|capitalize }}</span> &bull;
-          Rate: <strong>{{ '%.0f'|format(w.rate) }}</strong> bbl/d
+  <!-- Main content -->
+  <div class="main">
+    <!-- Row 1: Wells + Metrics + Chart -->
+    <div class="row row-3">
+      <div class="card">
+        <div class="card-title">Wells</div>
+        <canvas id="well-map" height="180"></canvas>
+        <div class="well-list">
+          {% for w in config.wells %}
+          <div class="well-tag {{ w.kind }}">
+            <span class="name">{{ w.name }}</span>
+            <span class="meta">{{ '%.0f'|format(w.rate) }} bbl/d</span>
+          </div>
+          {% endfor %}
         </div>
       </div>
-      {% endfor %}
-    </div>
-    <!-- Key Metrics -->
-    <div class="card">
-      <h2>Key Metrics</h2>
-      <div class="grid-3">
-        <div class="metric"><div class="value" id="m-p-inj" style="color: var(--red);">{% if baseline %}{{ '%.0f'|format(baseline.p_inj_psi) }}{% else %}&mdash;{% endif %}</div><div class="label">Injector (psi)</div></div>
-        <div class="metric"><div class="value" id="m-p-prod" style="color: var(--green);">{% if baseline %}{{ '%.0f'|format(baseline.p_prod_psi) }}{% else %}&mdash;{% endif %}</div><div class="label">Producer (psi)</div></div>
-        <div class="metric"><div class="value" id="m-sg-prod" style="color: var(--cyan);">{% if baseline %}{{ '%.1f'|format(baseline.sg_prod * 100) }}{% else %}&mdash;{% endif %}</div><div class="label">Producer Sg (%)</div></div>
-      </div>
-      <div class="grid-3" style="margin-top: 8px;">
-        <div class="metric"><div class="value" id="m-inj-rate" style="font-size:1rem; color:var(--yellow);">{% if baseline %}{{ '%.0f'|format(baseline.injector_rate) }}{% else %}&mdash;{% endif %}</div><div class="label">Inj Rate (bbl/d)</div></div>
-        <div class="metric"><div class="value" id="m-prod-rate" style="font-size:1rem; color:var(--yellow);">{% if baseline %}{{ '%.0f'|format(baseline.producer_rate) }}{% else %}&mdash;{% endif %}</div><div class="label">Prod Rate (bbl/d)</div></div>
-        <div class="metric"><div class="value" id="m-loss" style="font-size:0.9rem;">{% if baseline %}{{ '%.2f'|format(baseline.total_loss) }}{% else %}&mdash;{% endif %}</div><div class="label">Loss</div></div>
-      </div>
-      <div style="margin-top: 8px; font-size: 0.75rem; color: var(--muted); text-align: center;">
-        Train time: <span id="train-time">{% if baseline %}{{ '%.1f'|format(baseline.train_time_s) }}s{% else %}&mdash;{% endif %}</span>
-        &bull; FDM targets: injector 4801 psi &middot; producer 3840 psi &middot; Sg 8.6%
-      </div>
-    </div>
-    <!-- Pressure comparison chart -->
-    <div class="card">
-      <h2>Pressure Comparison</h2>
-      <div class="chart-container"><canvas id="pressure-chart"></canvas></div>
-      <div style="margin-top:6px; text-align:center; font-size:0.7rem; color:var(--muted);">
-        <span class="badge badge-inj">Injector</span>
-        <span class="badge badge-prod">Producer</span>
-        <span style="margin-left:8px;">FDM: 4801 / 3840 psi</span>
-      </div>
-    </div>
-  </div>
 
-  <!-- What-If + Predict row -->
-  <div class="grid-2">
-    <div class="card">
-      <h2>What-If Scenario</h2>
-      <div class="form-row">
-        <div><label>Label</label><input type="text" id="wi-label" value="Increase injection" placeholder="Scenario name"></div>
-        <div><label>Injector Rate (bbl/d)</label><input type="number" id="wi-inj-rate" value="15000" placeholder="Default"></div>
-        <div><label>Producer Rate (bbl/d)</label><input type="number" id="wi-prod-rate" value="25000" placeholder="Default"></div>
-        <div><label>Epochs</label><input type="number" id="wi-epochs" value="40"></div>
-        <div><label style="opacity:0;">Run</label><button onclick="whatif()" id="wi-btn">Run Scenario</button></div>
+      <div class="card">
+        <div class="card-title">Key Metrics</div>
+        <div class="metric-grid">
+          <div class="metric"><div class="value inj" id="m-p-inj">{% if baseline %}{{ '%.0f'|format(baseline.p_inj_psi) }}{% else %}&mdash;{% endif %}</div><div class="label">Injector psi</div></div>
+          <div class="metric"><div class="value prod" id="m-p-prod">{% if baseline %}{{ '%.0f'|format(baseline.p_prod_psi) }}{% else %}&mdash;{% endif %}</div><div class="label">Producer psi</div></div>
+          <div class="metric"><div class="value" id="m-sg-prod" style="color:var(--text)">{% if baseline %}{{ '%.1f'|format(baseline.sg_prod * 100) }}{% else %}&mdash;{% endif %}</div><div class="label">Sg %</div></div>
+        </div>
+        <div class="metric-grid" style="margin-top:6px;">
+          <div class="metric"><div class="value gold" id="m-inj-rate" style="font-size:1rem">{% if baseline %}{{ '%.0f'|format(baseline.injector_rate) }}{% else %}&mdash;{% endif %}</div><div class="label">Inj rate</div></div>
+          <div class="metric"><div class="value gold" id="m-prod-rate" style="font-size:1rem">{% if baseline %}{{ '%.0f'|format(baseline.producer_rate) }}{% else %}&mdash;{% endif %}</div><div class="label">Prod rate</div></div>
+          <div class="metric"><div class="value" id="m-loss" style="font-size:0.85rem">{% if baseline %}{{ '%.2f'|format(baseline.total_loss) }}{% else %}&mdash;{% endif %}</div><div class="label">Loss</div></div>
+        </div>
+        <div class="metric-footnote">
+          Train: <span id="train-time">{% if baseline %}{{ '%.1f'|format(baseline.train_time_s) }}s{% else %}&mdash;{% endif %}</span>
+          &nbsp;&middot;&nbsp; FDM target: 4801 / 3840 psi &middot; 8.6% Sg
+        </div>
       </div>
-      <div class="progress-bar" id="wi-progress"><div class="fill"></div></div>
-    </div>
-    <div class="card">
-      <h2>Predict at Point</h2>
-      <div class="form-row">
-        <div><label>X (frac)</label><input type="number" id="pred-x" value="0.5" step="0.05" min="0" max="1"></div>
-        <div><label>Y (frac)</label><input type="number" id="pred-y" value="0.5" step="0.05" min="0" max="1"></div>
-        <div><label>Time (days)</label><input type="number" id="pred-t" value="100" step="10"></div>
-        <div><label>Epochs</label><input type="number" id="pred-epochs" value="30"></div>
-        <div><label style="opacity:0;">Query</label><button onclick="predictPoint()" id="pred-btn">Query</button></div>
-      </div>
-      <div id="pred-result" style="margin-top:8px; font-size:0.8rem; color:var(--muted); text-align:center;"></div>
-    </div>
-  </div>
 
-  <!-- Bottom row: History + Memory -->
-  <div class="grid-2">
-    <div class="card">
-      <h2>Scenario History</h2>
-      <table>
-        <thead><tr><th>Scenario</th><th>P inj</th><th>P prod</th><th>Sg</th><th>Inj rate</th><th>Prod rate</th><th>Time</th></tr></thead>
-        <tbody id="history-body">
-          {% if baseline %}
-          <tr style="color:var(--muted);">
-            <td>Baseline</td><td>{{ '%.0f'|format(baseline.p_inj_psi) }}</td><td>{{ '%.0f'|format(baseline.p_prod_psi) }}</td>
-            <td>{{ '%.1f'|format(baseline.sg_prod * 100) }}%</td><td>{{ '%.0f'|format(baseline.injector_rate) }}</td>
-            <td>{{ '%.0f'|format(baseline.producer_rate) }}</td><td>{{ '%.1f'|format(baseline.train_time_s) }}s</td>
-          </tr>
-          {% endif %}
-          {% for h in history %}
-          <tr><td>{{ h.label }}</td><td>{{ '%.0f'|format(h.p_inj_psi) }}</td><td>{{ '%.0f'|format(h.p_prod_psi) }}</td>
-            <td>{{ '%.1f'|format(h.sg_prod * 100) }}%</td><td>{{ '%.0f'|format(h.injector_rate) }}</td>
-            <td>{{ '%.0f'|format(h.producer_rate) }}</td><td>{{ '%.1f'|format(h.train_time_s) }}s</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="card">
+        <div class="card-title">Pressure Comparison</div>
+        <div class="chart-wrap"><canvas id="pressure-chart"></canvas></div>
+        <div class="chart-legend">
+          <span style="color:var(--inj)">&#9644; Injector</span>
+          <span style="color:var(--prod)">&#9644; Producer</span>
+          <span>FDM: 4801 / 3840</span>
+        </div>
+      </div>
     </div>
-    <div class="card">
-      <h2>Memory Store <span style="font-weight:400;color:var(--muted);font-size:0.7rem;">haql-memory graph</span></h2>
-      <div id="entity-list"><div class="memory-empty">No memory entities loaded</div></div>
-      <div style="margin-top:8px;"><button class="btn-small" onclick="loadMemory()">Reload</button></div>
+
+    <!-- Row 2: What-If + Predict -->
+    <div class="row row-2">
+      <div class="card">
+        <div class="card-title">What-If Scenario</div>
+        <div class="form-row">
+          <div style="flex:1.5"><label>Label</label><input type="text" id="wi-label" value="Increase injection"></div>
+          <div><label>Inj rate</label><input type="number" id="wi-inj-rate" value="15000"></div>
+          <div><label>Prod rate</label><input type="number" id="wi-prod-rate" value="25000"></div>
+          <div><label>Epochs</label><input type="number" id="wi-epochs" value="40"></div>
+          <div><label>&nbsp;</label><button onclick="whatif()" id="wi-btn">Run</button></div>
+        </div>
+        <div class="progress-bar" id="wi-progress"><div class="fill"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Point Query</div>
+        <div class="form-row">
+          <div><label>X</label><input type="number" id="pred-x" value="0.5" step="0.05" min="0" max="1"></div>
+          <div><label>Y</label><input type="number" id="pred-y" value="0.5" step="0.05" min="0" max="1"></div>
+          <div><label>Time (d)</label><input type="number" id="pred-t" value="100" step="10"></div>
+          <div><label>Epochs</label><input type="number" id="pred-epochs" value="30"></div>
+          <div><label>&nbsp;</label><button onclick="predictPoint()" id="pred-btn" class="secondary">Query</button></div>
+        </div>
+        <div id="pred-result"></div>
+      </div>
+    </div>
+
+    <!-- Row 3: History + Memory -->
+    <div class="row row-2" style="margin-bottom:0;">
+      <div class="card">
+        <div class="card-title">Scenario History</div>
+        <table>
+          <thead><tr><th>Scenario</th><th>P inj</th><th>P prod</th><th>Sg</th><th>Inj</th><th>Prod</th><th>Time</th></tr></thead>
+          <tbody id="history-body">
+            {% if baseline %}
+            <tr class="baseline-row"><td>Baseline</td><td>{{ '%.0f'|format(baseline.p_inj_psi) }}</td><td>{{ '%.0f'|format(baseline.p_prod_psi) }}</td><td>{{ '%.1f'|format(baseline.sg_prod * 100) }}%</td><td>{{ '%.0f'|format(baseline.injector_rate) }}</td><td>{{ '%.0f'|format(baseline.producer_rate) }}</td><td>{{ '%.1f'|format(baseline.train_time_s) }}s</td></tr>
+            {% endif %}
+            {% for h in history %}
+            <tr><td>{{ h.label }}</td><td>{{ '%.0f'|format(h.p_inj_psi) }}</td><td>{{ '%.0f'|format(h.p_prod_psi) }}</td><td>{{ '%.1f'|format(h.sg_prod * 100) }}%</td><td>{{ '%.0f'|format(h.injector_rate) }}</td><td>{{ '%.0f'|format(h.producer_rate) }}</td><td>{{ '%.1f'|format(h.train_time_s) }}s</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>Memory Store</span>
+          <button class="secondary" onclick="loadMemory()" style="padding:3px 10px;font-size:0.7rem;">Reload</button>
+        </div>
+        <div id="entity-list"><div class="memory-empty">No entities stored.</div></div>
+      </div>
     </div>
   </div>
 </div>
@@ -205,12 +276,12 @@
 <script>
 const BASE = '';
 
-function showToast(msg, ok=true) {
+function toast(msg, ok=true) {
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.style.borderLeft = ok ? '3px solid var(--green)' : '3px solid var(--red)';
+  t.style.borderLeft = ok ? '3px solid var(--prod)' : '3px solid var(--inj)';
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 5000);
+  setTimeout(() => t.classList.remove('show'), 4000);
 }
 
 // ── Well map ──
@@ -218,15 +289,14 @@ function drawWellMap(wells) {
   const c = document.getElementById('well-map');
   if (!c) return;
   const ctx = c.getContext('2d');
-  const w = c.width = c.clientWidth;
-  const h = c.height;
-  const pad = 30;
-  const x0 = pad, y0 = pad, x1 = w - pad, y1 = h - pad;
+  const W = c.width = c.clientWidth;
+  const H = c.height;
+  const pad = 28;
+  const x0 = pad, y0 = pad, x1 = W - pad, y1 = H - pad;
 
-  ctx.clearRect(0, 0, w, h);
+  ctx.clearRect(0, 0, W, H);
 
-  // Grid
-  ctx.strokeStyle = '#2a2d3a';
+  ctx.strokeStyle = '#1e293b';
   ctx.lineWidth = 0.5;
   for (let i = 0; i <= 10; i++) {
     const fx = x0 + (x1 - x0) * i / 10, fy = y0 + (y1 - y0) * i / 10;
@@ -234,57 +304,40 @@ function drawWellMap(wells) {
     ctx.beginPath(); ctx.moveTo(x0, fy); ctx.lineTo(x1, fy); ctx.stroke();
   }
 
-  // Well markers
   wells.forEach(w => {
     const px = x0 + (x1 - x0) * w.x;
     const py = y0 + (y1 - y0) * (1 - w.y);
-    const r = 10;
     const isInj = w.kind === 'injector';
+    const color = isInj ? '#ef4444' : '#22c55e';
 
-    // Glow
-    const grad = ctx.createRadialGradient(px, py, 0, px, py, r * 2.5);
-    grad.addColorStop(0, isInj ? 'rgba(224,108,117,0.3)' : 'rgba(152,195,121,0.3)');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.arc(px, py, r * 2.5, 0, Math.PI * 2); ctx.fill();
-
-    // Marker
-    ctx.fillStyle = isInj ? '#e06c75' : '#98c379';
-    ctx.strokeStyle = '#0f1117';
-    ctx.lineWidth = 2;
+    ctx.fillStyle = color;
     ctx.beginPath();
     if (isInj) {
-      // Triangle for injector
-      ctx.moveTo(px, py - r);
-      ctx.lineTo(px - r * 0.866, py + r * 0.5);
-      ctx.lineTo(px + r * 0.866, py + r * 0.5);
+      const s = 9;
+      ctx.moveTo(px, py - s);
+      ctx.lineTo(px - s * 0.866, py + s * 0.5);
+      ctx.lineTo(px + s * 0.866, py + s * 0.5);
     } else {
-      // Circle for producer
-      ctx.arc(px, py, r * 0.7, 0, Math.PI * 2);
+      ctx.arc(px, py, 7, 0, Math.PI * 2);
     }
     ctx.fill();
-    ctx.stroke();
 
-    // Label
-    ctx.fillStyle = '#e1e3ea';
-    ctx.font = '10px monospace';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(w.name, px, py + r + 14);
+    ctx.fillText(w.name, px, py + 18);
   });
 
-  // Axis labels
-  ctx.fillStyle = '#8b8fa3';
-  ctx.font = '9px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.font = '9px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('x', w / 2, h - 2);
-  ctx.textAlign = 'right';
-  ctx.fillText('y', x0 - 4, (y0 + y1) / 2 + 3);
+  ctx.fillText('x', W / 2, H - 3);
 }
 
-// ── Training ──
+// ── Train ──
 async function train() {
   const btn = document.getElementById('train-btn');
-  btn.disabled = true; btn.textContent = 'Training...';
+  btn.disabled = true; btn.textContent = 'Running...';
   try {
     const r = await fetch(BASE + '/train', {
       method: 'POST',
@@ -296,21 +349,23 @@ async function train() {
     });
     const d = await r.json();
     if (d.status === 'ok') {
-      document.getElementById('m-p-inj').textContent = Math.round(d.p_inj_psi);
-      document.getElementById('m-p-prod').textContent = Math.round(d.p_prod_psi);
-      document.getElementById('m-sg-prod').textContent = (d.sg_prod * 100).toFixed(1);
-      document.getElementById('m-inj-rate').textContent = Math.round(d.inj_rate || 10000);
-      document.getElementById('m-prod-rate').textContent = Math.round(d.prod_rate || 20000);
-      document.getElementById('train-time').textContent = d.train_time_s + 's';
-      document.getElementById('m-loss').textContent = (d.total_loss || 0).toFixed(2);
+      ['m-p-inj','m-p-prod','m-sg-prod','m-inj-rate','m-prod-rate','m-loss','train-time'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const map = { 'm-p-inj': Math.round(d.p_inj_psi), 'm-p-prod': Math.round(d.p_prod_psi),
+          'm-sg-prod': (d.sg_prod * 100).toFixed(1), 'm-inj-rate': Math.round(d.inj_rate||10000),
+          'm-prod-rate': Math.round(d.prod_rate||20000), 'm-loss': (d.total_loss||0).toFixed(2),
+          'train-time': d.train_time_s + 's' };
+        el.textContent = map[id] || el.textContent;
+      });
       document.getElementById('status-dot').className = 'status-dot ready';
-      document.getElementById('status-text').textContent = 'Model trained \u2014 ready for what-if queries';
-      showToast('Baseline trained in ' + d.train_time_s + 's');
+      document.getElementById('status-text').textContent = 'Ready';
       updateChart(d);
-      setTimeout(() => location.reload(), 500);
-    } else { showToast('Error: ' + d.message, false); }
-  } catch(e) { showToast('Error: ' + e, false); }
-  finally { btn.disabled = false; btn.textContent = 'Train Baseline'; }
+      toast('Baseline trained in ' + d.train_time_s + 's');
+      setTimeout(() => location.reload(), 400);
+    } else { toast(d.message || 'Error', false); }
+  } catch(e) { toast(e.message || e, false); }
+  finally { btn.disabled = false; btn.textContent = 'Train'; }
 }
 
 // ── What-if ──
@@ -333,11 +388,14 @@ async function whatif() {
     });
     const d = await r.json();
     if (d.status === 'ok') {
-      document.getElementById('m-p-inj').textContent = Math.round(d.p_inj_psi);
-      document.getElementById('m-p-prod').textContent = Math.round(d.p_prod_psi);
-      document.getElementById('m-sg-prod').textContent = (d.sg_prod * 100).toFixed(1);
-      document.getElementById('m-inj-rate').textContent = Math.round(d.inj_rate);
-      document.getElementById('m-prod-rate').textContent = Math.round(d.prod_rate);
+      ['m-p-inj','m-p-prod','m-sg-prod','m-inj-rate','m-prod-rate'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const map = { 'm-p-inj': Math.round(d.p_inj_psi), 'm-p-prod': Math.round(d.p_prod_psi),
+          'm-sg-prod': (d.sg_prod * 100).toFixed(1), 'm-inj-rate': Math.round(d.inj_rate),
+          'm-prod-rate': Math.round(d.prod_rate) };
+        el.textContent = map[id] || el.textContent;
+      });
       const tb = document.getElementById('history-body');
       const tr = document.createElement('tr');
       tr.className = 'fade-in';
@@ -346,17 +404,17 @@ async function whatif() {
         <td>${d.train_time_s}s</td>`;
       tb.appendChild(tr);
       updateChart(d);
-      showToast(`"${d.label}" done in ${d.train_time_s}s`);
-    } else { showToast('Error: ' + d.message, false); }
-  } catch(e) { showToast('Error: ' + e, false); }
-  finally { btn.disabled = false; btn.textContent = 'Run Scenario'; pb.style.display = 'none'; }
+      toast(`"${d.label}" done`);
+    } else { toast(d.message || 'Error', false); }
+  } catch(e) { toast(e.message || e, false); }
+  finally { btn.disabled = false; btn.textContent = 'Run'; pb.style.display = 'none'; }
 }
 
-// ── Predict at point ──
+// ── Predict ──
 async function predictPoint() {
   const btn = document.getElementById('pred-btn');
   const res = document.getElementById('pred-result');
-  btn.disabled = true; btn.textContent = 'Querying...';
+  btn.disabled = true; btn.textContent = '...';
   try {
     const r = await fetch(BASE + '/predict', {
       method: 'POST',
@@ -371,20 +429,19 @@ async function predictPoint() {
     });
     const d = await r.json();
     if (d.status === 'ok') {
-      res.innerHTML = `<span style="color:var(--red);">P</span> = <strong>${d.pressure_psi}</strong> psi &nbsp;|&nbsp; <span style="color:var(--cyan);">Sg</span> = <strong>${d.sg_pct}</strong> %`;
-    } else { res.textContent = 'Error: ' + (d.message || 'unknown'); }
-  } catch(e) { res.textContent = 'Error: ' + e; }
+      res.innerHTML = `P = <strong>${d.pressure_psi}</strong> psi &nbsp; Sg = <strong>${d.sg_pct}</strong> %`;
+    } else { res.textContent = d.message || 'Error'; }
+  } catch(e) { res.textContent = e.message || e; }
   finally { btn.disabled = false; btn.textContent = 'Query'; }
 }
 
-// ── Pressure chart (Chart.js) ──
+// ── Chart ──
 let pressureChart = null;
 function updateChart(data) {
   const ctx = document.getElementById('pressure-chart');
   if (!ctx) return;
-  const inj = data.p_inj_psi || 0;
-  const prod = data.p_prod_psi || 0;
-  const label = data.label || 'Current';
+  const inj = data.p_inj_psi || 0, prod = data.p_prod_psi || 0;
+  const label = data.label || 'Run';
 
   if (!pressureChart) {
     pressureChart = new Chart(ctx, {
@@ -392,51 +449,44 @@ function updateChart(data) {
       data: {
         labels: [label],
         datasets: [
-          { label: 'Injector', data: [inj], backgroundColor: 'rgba(224,108,117,0.7)', borderColor: '#e06c75', borderWidth: 1 },
-          { label: 'Producer', data: [prod], backgroundColor: 'rgba(152,195,121,0.7)', borderColor: '#98c379', borderWidth: 1 },
+          { label: 'Injector', data: [inj], backgroundColor: 'rgba(239,68,68,0.7)', borderColor: '#ef4444', borderWidth: 1, borderRadius: 3 },
+          { label: 'Producer', data: [prod], backgroundColor: 'rgba(34,197,94,0.7)', borderColor: '#22c55e', borderWidth: 1, borderRadius: 3 },
         ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { beginAtZero: false, grid: { color: '#2a2d3a' }, ticks: { color: '#8b8fa3', font: { size: 9 } } },
-          x: { grid: { display: false }, ticks: { color: '#8b8fa3', font: { size: 9 } } },
+          y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: { size: 9 } } },
+          x: { grid: { display: false }, ticks: { color: '#64748b', font: { size: 9 } } },
         },
       },
     });
   } else {
-    const ds = pressureChart.data.datasets;
-    ds[0].data.push(inj);
-    ds[1].data.push(prod);
+    pressureChart.data.datasets[0].data.push(inj);
+    pressureChart.data.datasets[1].data.push(prod);
     pressureChart.data.labels.push(label);
     pressureChart.update();
   }
 }
 
-// ── Init with baseline data ──
 {% if baseline %}
-const baselineData = {
-  label: 'Baseline',
-  p_inj_psi: {{ baseline.p_inj_psi }},
-  p_prod_psi: {{ baseline.p_prod_psi }},
-};
-updateChart(baselineData);
+updateChart({ label: 'Baseline', p_inj_psi: {{ baseline.p_inj_psi }}, p_prod_psi: {{ baseline.p_prod_psi }} });
 {% endif %}
 
-// ── Memory browser ──
+// ── Memory ──
 async function loadMemory() {
   const el = document.getElementById('entity-list');
   el.innerHTML = '<div class="memory-empty">Loading...</div>';
   try {
     const r = await fetch(BASE + '/memory/entities');
     const d = await r.json();
-    if (d.entities && d.entities.length > 0) {
+    if (d.entities && d.entities.length) {
       el.innerHTML = d.entities.map(e =>
-        `<div class="entity-row"><span><span class="entity-kind">${e.eid}</span></span></div>`
+        `<div class="entity-row"><span class="entity-eid">${e.eid}</span><span class="entity-kind">${e.info ? e.info.substring(0,40) : ''}</span></div>`
       ).join('');
     } else {
-      el.innerHTML = '<div class="memory-empty">No entities stored yet. Train a model to populate memory.</div>';
+      el.innerHTML = '<div class="memory-empty">No entities stored. Train a model to populate.</div>';
     }
   } catch(e) {
     el.innerHTML = '<div class="memory-empty">Memory unavailable</div>';
@@ -444,7 +494,7 @@ async function loadMemory() {
 }
 loadMemory();
 
-// ── Well map with initial data ──
+// ── Init map ──
 setTimeout(() => drawWellMap([
   {% for w in config.wells %}
   {name: '{{ w.name }}', x: {{ w.x }}, y: {{ w.y }}, kind: '{{ w.kind }}'} {% if not loop.last %},{% endif %}
